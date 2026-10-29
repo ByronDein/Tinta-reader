@@ -1,5 +1,5 @@
 // Service worker: la app funciona sin conexión tras la primera visita.
-const CACHE = "pdf-reader-v1";
+const CACHE = "tinta-reader-v1";
 const PAGES = ["/", "/read"];
 const STATIC = ["/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png", "/icons/icon-512.png", "/pdf.worker.min.mjs"];
 

@@ -1,4 +1,4 @@
-# Lector PDF
+# Tinta Reader
 
 Lector de PDF tipo Kindle que funciona 100 % en el navegador: sin backend, sin cuentas, sin analytics. Tus archivos se guardan en IndexedDB y nunca salen del dispositivo.
 
@@ -6,6 +6,7 @@ Lector de PDF tipo Kindle que funciona 100 % en el navegador: sin backend, sin c
 - **Modo Página Original**: la página del PDF con zoom, texto seleccionable y el tema de color aplicado.
 - Biblioteca con portadas, progreso, marcadores, subrayados, notas (exportables a Markdown), búsqueda, estadísticas y copia de seguridad en JSON.
 - PWA: tras la primera visita funciona sin conexión.
+- Sincronización **opcional** entre dispositivos (progreso, notas, ajustes y PDF) con una cuenta de Supabase. Sin cuenta, todo se queda en el navegador.
 
 ## Cómo correr
 
@@ -21,6 +22,16 @@ npm run build && npm start
 
 1. Sube el repositorio a GitHub.
 2. En Vercel: *Add New → Project*, importa el repositorio y pulsa *Deploy*. No requiere variables de entorno ni configuración extra (plan Hobby).
+
+## Sincronización (opcional)
+
+La app funciona sin esto. Para activarla:
+
+1. Crea un proyecto gratis en [supabase.com](https://supabase.com).
+2. En *SQL Editor*, pega y ejecuta `supabase/schema.sql`.
+3. En *Authentication → Email Templates*, incluye `{{ .Token }}` en las plantillas "Confirm signup" y "Magic Link" para que el correo traiga el código.
+4. Copia `.env.example` a `.env.local` y completa `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` (clave *anon*/*publishable*, nunca la `service_role`).
+5. En Vercel, agrega las mismas variables (*Settings → Environment Variables*) y en Supabase, en *Authentication → URL Configuration*, la URL del sitio.
 
 ## Notas
 

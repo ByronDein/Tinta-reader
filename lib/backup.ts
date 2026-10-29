@@ -1,5 +1,5 @@
 import { db, dumpBackup, getBook, putBook } from "./db";
-import type { Annotation, Progress, StatRow } from "./types";
+import type { Annotation, Progress, StatRow, VocabEntry } from "./types";
 
 export async function exportBackup() {
   const data = await dumpBackup();
@@ -7,7 +7,7 @@ export async function exportBackup() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `lector-pdf-copia-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `tinta-reader-copia-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -23,6 +23,7 @@ export async function importBackup(file: File): Promise<boolean> {
     settings?: { key: string; value: Record<string, unknown> }[];
     annotations?: Annotation[];
     stats?: StatRow[];
+    vocab?: VocabEntry[];
   };
   try {
     data = JSON.parse(await file.text());
@@ -44,5 +45,6 @@ export async function importBackup(file: File): Promise<boolean> {
     const cur = await d.get("stats", s.date);
     if (!cur || cur.seconds < s.seconds) await d.put("stats", s);
   }
+  for (const v of data.vocab ?? []) if (!(await d.get("vocab", v.id))) await d.put("vocab", v);
   return true;
 }

@@ -12,6 +12,7 @@ public/pdfjs
 # archivos locales
 books
 .env*
+!.env.example
 .vercel
 .DS_Store
 Thumbs.db

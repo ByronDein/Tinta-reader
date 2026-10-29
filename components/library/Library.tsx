@@ -1,13 +1,18 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, DatabaseBackup, Loader2, Plus, Search, X } from "lucide-react";
+import { BarChart3, BookA, Cloud, CloudDownload, DatabaseBackup, Loader2, MoreVertical, Plus, Search, X } from "lucide-react";
 import { useLibrary } from "@/store/library";
+import { useAuth } from "@/store/auth";
 import { getMeta, setMeta } from "@/lib/db";
+import { cloudEnabled } from "@/lib/supabase";
+import { downloadBook, syncAll, useSync, type CloudBook } from "@/lib/sync";
 import { t } from "@/lib/i18n/es";
+import { AccountPanel } from "../account/AccountPanel";
 import { BookCard } from "./BookCard";
 import { Welcome } from "./Welcome";
 import { Stats } from "./Stats";
 import { BackupMenu } from "./BackupMenu";
+import { Vocabulary } from "./Vocabulary";
 import type { Book } from "@/lib/types";
 
 type Sort = "recent" | "title" | "added";
@@ -21,12 +26,40 @@ export function Library() {
   const [stats, setStats] = useState(false);
   const [backup, setBackup] = useState(false);
   const [toDelete, setToDelete] = useState<Book | null>(null);
+  const [account, setAccount] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [vocab, setVocab] = useState(false);
+  const [downloading, setDownloading] = useState<string[]>([]);
+  const [dlError, setDlError] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const user = useAuth((s) => s.user);
+  const syncVersion = useSync((s) => s.version);
+  const cloudOnly = useSync((s) => s.cloudOnly);
 
   useEffect(() => {
     void load();
     void getMeta<boolean>("welcomeSeen").then((v) => setWelcome(!v));
   }, [load]);
+
+  // al terminar una sincronización se refresca la biblioteca
+  useEffect(() => {
+    if (syncVersion) void load();
+  }, [syncVersion, load]);
+
+  const fetchBook = async (b: CloudBook) => {
+    setDlError("");
+    setDownloading((l) => [...l, b.id]);
+    try {
+      await addFiles([await downloadBook(b)]);
+      useSync.setState((s) => ({ cloudOnly: s.cloudOnly.filter((x) => x.id !== b.id) }));
+      void syncAll(); // trae el progreso de ese libro
+    } catch (e) {
+      console.warn(e);
+      setDlError(t.account.downloadError);
+    } finally {
+      setDownloading((l) => l.filter((x) => x !== b.id));
+    }
+  };
 
   useEffect(() => {
     let depth = 0;
@@ -83,12 +116,39 @@ export function Library() {
         <div className="flex items-center justify-between pt-3">
           <h1 className="text-2xl font-semibold">{t.library.title}</h1>
           <div className="flex items-center gap-1">
-            <button className="btn-icon" aria-label={t.library.stats} onClick={() => setStats(true)}>
-              <BarChart3 size={22} />
-            </button>
-            <button className="btn-icon" aria-label={t.library.backup} onClick={() => setBackup(true)}>
-              <DatabaseBackup size={22} />
-            </button>
+            {cloudEnabled && (
+              <button className="btn-icon" aria-label={t.account.open} onClick={() => setAccount(true)}>
+                <Cloud size={22} className={user ? "text-accent" : ""} />
+              </button>
+            )}
+            <div className="relative">
+              <button className="btn-icon" aria-label={t.lookup.more} aria-expanded={menu} onClick={() => setMenu((v) => !v)}>
+                <MoreVertical size={22} />
+              </button>
+              {menu && (
+                <>
+                  <button className="fixed inset-0 z-10 cursor-default" aria-label={t.reader.close} onClick={() => setMenu(false)} />
+                  <div className="absolute right-0 top-12 z-20 w-56 overflow-hidden rounded-xl border border-line bg-bg shadow-xl">
+                    {[
+                      { icon: BookA, label: t.lookup.vocab, run: () => setVocab(true) },
+                      { icon: BarChart3, label: t.library.stats, run: () => setStats(true) },
+                      { icon: DatabaseBackup, label: t.library.backup, run: () => setBackup(true) },
+                    ].map(({ icon: Icon, label, run }) => (
+                      <button
+                        key={label}
+                        className="flex min-h-12 w-full items-center gap-3 px-4 text-left active:bg-surface"
+                        onClick={() => {
+                          setMenu(false);
+                          run();
+                        }}
+                      >
+                        <Icon size={20} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <button className="btn btn-primary" onClick={() => input.current?.click()}>
               <Plus size={18} /> <span className="whitespace-nowrap">{t.library.addShort}</span>
             </button>
@@ -180,6 +240,32 @@ export function Library() {
         </section>
       ))}
 
+      {user && cloudOnly.length > 0 && (
+        <section className="mt-6">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">{t.account.cloudTitle}</h2>
+          <ul className="space-y-2">
+            {cloudOnly.map((b) => (
+              <li key={b.id} className="flex items-center justify-between gap-3 rounded-xl border border-line bg-surface p-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{b.title}</p>
+                  <p className="text-xs text-muted">
+                    {b.pageCount} {t.library.pages} · {(b.size / 1048576).toFixed(1)} MB
+                  </p>
+                </div>
+                <button className="btn shrink-0" disabled={downloading.includes(b.id)} onClick={() => void fetchBook(b)}>
+                  {downloading.includes(b.id) ? <Loader2 size={18} className="animate-spin" /> : <CloudDownload size={18} />}
+                  <span className="whitespace-nowrap">
+                    {downloading.includes(b.id) ? t.account.downloading : t.account.download}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {dlError && <p className="mt-2 text-sm">{dlError}</p>}
+        </section>
+      )}
+
+      {account && <AccountPanel onClose={() => setAccount(false)} />}
       {dragging && (
         <div className="pointer-events-none fixed inset-3 z-50 flex items-center justify-center rounded-3xl border-2 border-dashed border-fg bg-bg/90 text-xl font-medium">
           {t.library.drop}
@@ -194,6 +280,7 @@ export function Library() {
         />
       )}
       {stats && <Stats onClose={() => setStats(false)} />}
+      {vocab && <Vocabulary onClose={() => setVocab(false)} />}
       {backup && (
         <BackupMenu
           onClose={() => setBackup(false)}
@@ -207,6 +294,7 @@ export function Library() {
           <div className="w-full max-w-sm rounded-2xl bg-bg p-5" onClick={(e) => e.stopPropagation()}>
             <h3 className="font-semibold">{toDelete.title}</h3>
             <p className="mt-2 text-sm text-muted">{t.library.deleteConfirm}</p>
+            {user && <p className="mt-2 text-sm text-muted">{t.account.deleteAlsoCloud}</p>}
             <div className="mt-4 flex justify-end gap-2">
               <button className="btn" onClick={() => setToDelete(null)}>
                 {t.library.cancel}

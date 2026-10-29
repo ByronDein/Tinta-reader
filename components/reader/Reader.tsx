@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, NotebookPen, X } from "lucide-react";
+import { Languages, Loader2, NotebookPen, X } from "lucide-react";
 import {
   deleteAnnotation,
   getBlocks,
@@ -18,6 +18,8 @@ import {
 } from "@/lib/db";
 import { openPdf, type OpenedPdf } from "@/lib/pdf";
 import { recordSeconds } from "@/lib/stats";
+import { pullProgress, pushProgress } from "@/lib/sync";
+import { sentenceAround } from "@/lib/lookup";
 import { isDarkColor } from "@/lib/themes";
 import { t } from "@/lib/i18n/es";
 import type { Annotation, Block, Book, HighlightColor, Progress, ReadMode, TocItem } from "@/lib/types";
@@ -30,6 +32,7 @@ import { SettingsPanel } from "./SettingsPanel";
 import { TocPanel } from "./TocPanel";
 import { SearchPanel } from "./SearchPanel";
 import { AnnotationsPanel, ColorDots, HighlightEditor } from "./AnnotationsPanel";
+import { LookupSheet } from "./LookupSheet";
 
 type Panel = "settings" | "toc" | "search" | "notes" | null;
 const DEFAULT_SPEED = 1100; // caracteres por minuto
@@ -53,6 +56,8 @@ export function Reader() {
       await st.loadBook(id);
       const book = await getBook(id);
       if (!book) return !cancelled && setMissing(true);
+      // si otro dispositivo leyó más reciente, empieza desde esa posición (máx. 2,5 s de espera)
+      if (navigator.onLine) await Promise.race([pullProgress(id), new Promise((r) => setTimeout(r, 2500))]);
       const [blocks, progress] = await Promise.all([getBlocks(id), getProgress(id)]);
       if (!cancelled) setLoaded({ book, blocks: blocks ?? [], progress });
     })();
@@ -98,6 +103,14 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
   const [info, setInfo] = useState<ViewInfo>({ page: 1, total: 1, percent: progress?.percent ?? 0 });
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [lookup, setLookup] = useState<{ text: string; context: string } | null>(null);
+  // al tocar la barra el navegador puede soltar la selección antes del clic: se espera un momento antes de ocultarla
+  const clearSel = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const onSelection = useCallback((s: Selection | null) => {
+    clearTimeout(clearSel.current);
+    if (s) setSelection(s);
+    else clearSel.current = setTimeout(() => setSelection(null), 600);
+  }, []);
   const [editing, setEditing] = useState<Annotation | null>(null);
   const [search, setSearch] = useState<{ query: string; matches: SearchMatch[]; current: number }>({ query: "", matches: [], current: 0 });
   const [notice, setNotice] = useState(!book.hasText ? t.reader.scanned : "");
@@ -172,7 +185,7 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
     const next: Book = { ...b, status, lastOpenedAt: now, finishedAt: status === "done" ? (b.finishedAt ?? now) : b.finishedAt };
     bookRef.current = next;
     void putBook(next);
-    void putProgress({
+    const prog: Progress = {
       bookId: b.id,
       mode: modeRef.current,
       blockIndex: posRef.current.blockIndex,
@@ -180,7 +193,9 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
       pdfPage: posRef.current.pdfPage,
       percent: p,
       updatedAt: now,
-    });
+    };
+    void putProgress(prog);
+    pushProgress(prog);
   }, []);
   const modeRef = useRef(mode);
   modeRef.current = mode;
@@ -427,7 +442,7 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
           currentMatch={search.current}
           onMove={onReflowMove}
           onToggleUI={() => setUi((u) => !u)}
-          onSelection={setSelection}
+          onSelection={onSelection}
           onHighlightClick={(hid) => {
             const a = annotations.find((x) => x.id === hid);
             if (a) setEditing(a);
@@ -482,9 +497,24 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
         </>
       )}
 
-      {selection && mode === "reflow" && !panel && (
+      {selection && mode === "reflow" && !panel && !lookup && (
         <div className="safe-bottom absolute inset-x-0 bottom-4 z-30 flex justify-center">
-          <div className="flex items-center rounded-full border border-line bg-bg px-2 shadow-xl">
+          {/* mousedown no debe quitar la selección, o la barra desaparece antes del clic */}
+          <div className="flex items-center rounded-full border border-line bg-bg px-2 shadow-xl" onMouseDown={(e) => e.preventDefault()}>
+            <button
+              className="btn-icon"
+              aria-label={t.lookup.button}
+              onClick={() => {
+                setLookup({
+                  text: selection.text,
+                  context: sentenceAround(blocks[selection.blockIndex]?.text ?? "", selection.start, selection.end),
+                });
+                window.getSelection()?.removeAllRanges();
+                setSelection(null);
+              }}
+            >
+              <Languages size={20} />
+            </button>
             <ColorDots onPick={(c) => void highlight(c)} />
             <button className="btn-icon" aria-label={t.reader.addNote} onClick={() => void highlight("yellow", true)}>
               <NotebookPen size={20} />
@@ -532,6 +562,7 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
           onClose={() => setPanel(null)}
         />
       )}
+      {lookup && <LookupSheet text={lookup.text} context={lookup.context} book={book} onClose={() => setLookup(null)} />}
       {editingLive && (
         <HighlightEditor ann={editingLive} onSave={(a) => void saveAnnotation(a)} onDelete={(aid) => void removeAnnotation(aid)} onClose={() => setEditing(null)} />
       )}

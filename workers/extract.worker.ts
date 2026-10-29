@@ -1,6 +1,5 @@
 /// <reference lib="webworker" />
-// Reconstruye párrafos fuera del hilo principal. pdf.js extrae el texto en su propio worker;
-// aquí se agrupa en líneas, columnas, párrafos y títulos.
+
 import { pageToLines, type PageLines, type RawItem } from "@/lib/reflow/extract";
 import { buildBlocks } from "@/lib/reflow/paragraphs";
 import type { Block } from "@/lib/types";

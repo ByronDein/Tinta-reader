@@ -8,3 +8,8 @@
 - Marcadores/subrayados en modo página original se anclan por número de página (blockIndex = página-1).
 - Ruta del lector: `/read?id=` (estática) en vez de `/read/[id]`, para que funcione offline con el service worker.
 - Modo página original: solo marcadores (los subrayados y notas se hacen en modo lectura).
+- Nombre: Tinta Reader. La base de datos local sigue llamándose "pdf-reader" para no perder los datos ya guardados.
+- Sincronización opcional con Supabase (correo + código). Sin sesión todo queda en IndexedDB. El esquema y las reglas RLS están en `supabase/schema.sql`.
+- Los PDF se suben a un bucket privado como `<user_id>/<id>.pdf`; el id es el hash del contenido, así que el mismo libro nunca se sube dos veces. Límite de 50 MB por archivo (plan gratis).
+- Conflictos: gana la modificación más reciente (progreso, notas, ajustes). Los borrados viajan como marcas (`deleted`).
+- Los libros que están en la nube pero no en el dispositivo se muestran en "En la nube" y se descargan a petición (no se gasta datos móviles sin avisar).

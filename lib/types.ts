@@ -50,9 +50,25 @@ export interface Annotation {
   note?: string;
   page: number;
   createdAt: number;
+  updatedAt?: number;
 }
 export interface StatRow {
   date: string;
   seconds: number;
   bookIds: string[];
+}
+
+export interface VocabEntry {
+  /** palabra en minúsculas (una sola entrada por palabra) */
+  id: string;
+  word: string;
+  /** traducción */
+  meaning?: string;
+  /** definición corta */
+  definition?: string;
+  /** frase del libro donde apareció */
+  context: string;
+  bookId: string;
+  bookTitle: string;
+  createdAt: number;
 }
