@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Languages, Loader2, NotebookPen, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import {
   deleteAnnotation,
   getBlocks,
@@ -33,6 +33,7 @@ import { TocPanel } from "./TocPanel";
 import { SearchPanel } from "./SearchPanel";
 import { AnnotationsPanel, ColorDots, HighlightEditor } from "./AnnotationsPanel";
 import { LookupSheet } from "./LookupSheet";
+import { ActionBar } from "./ActionBar";
 
 type Panel = "settings" | "toc" | "search" | "notes" | null;
 const DEFAULT_SPEED = 1100; // caracteres por minuto
@@ -104,12 +105,16 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [lookup, setLookup] = useState<{ text: string; context: string } | null>(null);
+  // subrayado tocado: muestra su barra para cambiar color, nota o quitarlo
+  const [activeId, setActiveId] = useState<string | null>(null);
   // al tocar la barra el navegador puede soltar la selección antes del clic: se espera un momento antes de ocultarla
   const clearSel = useRef<ReturnType<typeof setTimeout>>(undefined);
   const onSelection = useCallback((s: Selection | null) => {
     clearTimeout(clearSel.current);
-    if (s) setSelection(s);
-    else clearSel.current = setTimeout(() => setSelection(null), 600);
+    if (s) {
+      setSelection(s);
+      setActiveId(null);
+    } else clearSel.current = setTimeout(() => setSelection(null), 600);
   }, []);
   const [editing, setEditing] = useState<Annotation | null>(null);
   const [search, setSearch] = useState<{ query: string; matches: SearchMatch[]; current: number }>({ query: "", matches: [], current: 0 });
@@ -246,6 +251,7 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
   const onReflowMove = useCallback(
     (p: Pos, i: ViewInfo) => {
       posRef.current = { blockIndex: p.blockIndex, charOffset: p.charOffset, pdfPage: blocks[p.blockIndex]?.page ?? 1 };
+      setActiveId(null);
       handleInfo(i);
     },
     [blocks, handleInfo],
@@ -426,6 +432,9 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
   const remaining = (1 - info.percent) * totalChars;
   const minutesLeft = remaining / Math.max(100, speed);
   const dark = typeof document !== "undefined" && isDarkColor(getComputedStyle(document.documentElement).getPropertyValue("--bg") || "#fff");
+  const activeAnn = activeId ? annotations.find((a) => a.id === activeId) : undefined;
+  const lookupOf = (text: string, blockIndex: number, start: number, end: number) =>
+    setLookup({ text, context: sentenceAround(blocks[blockIndex]?.text ?? "", start, end) });
   const editingLive = editing ? (annotations.find((a) => a.id === editing.id) ?? editing) : null;
 
   return (
@@ -441,11 +450,13 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
           matches={search.matches}
           currentMatch={search.current}
           onMove={onReflowMove}
-          onToggleUI={() => setUi((u) => !u)}
+          onToggleUI={() => {
+            setActiveId(null);
+            setUi((u) => !u);
+          }}
           onSelection={onSelection}
           onHighlightClick={(hid) => {
-            const a = annotations.find((x) => x.id === hid);
-            if (a) setEditing(a);
+            if (annotations.some((x) => x.id === hid)) setActiveId(hid);
           }}
           onEnd={onEnd}
         />
@@ -497,40 +508,39 @@ function ReaderInner({ book, blocks, progress }: Loaded) {
         </>
       )}
 
-      {selection && mode === "reflow" && !panel && !lookup && (
-        <div className="safe-bottom absolute inset-x-0 bottom-4 z-30 flex justify-center">
-          {/* mousedown no debe quitar la selección, o la barra desaparece antes del clic */}
-          <div className="flex items-center rounded-full border border-line bg-bg px-2 shadow-xl" onMouseDown={(e) => e.preventDefault()}>
-            <button
-              className="btn-icon"
-              aria-label={t.lookup.button}
-              onClick={() => {
-                setLookup({
-                  text: selection.text,
-                  context: sentenceAround(blocks[selection.blockIndex]?.text ?? "", selection.start, selection.end),
-                });
-                window.getSelection()?.removeAllRanges();
-                setSelection(null);
-              }}
-            >
-              <Languages size={20} />
-            </button>
-            <ColorDots onPick={(c) => void highlight(c)} />
-            <button className="btn-icon" aria-label={t.reader.addNote} onClick={() => void highlight("yellow", true)}>
-              <NotebookPen size={20} />
-            </button>
-            <button
-              className="btn-icon"
-              aria-label={t.reader.close}
-              onClick={() => {
-                window.getSelection()?.removeAllRanges();
-                setSelection(null);
-              }}
-            >
-              <X size={20} />
-            </button>
-          </div>
-        </div>
+      {selection && mode === "reflow" && !panel && !lookup && !editing && (
+        <ActionBar
+          onColor={(c) => void highlight(c)}
+          onNote={() => void highlight("yellow", true)}
+          onLookup={() => {
+            lookupOf(selection.text, selection.blockIndex, selection.start, selection.end);
+            window.getSelection()?.removeAllRanges();
+            setSelection(null);
+          }}
+          onClose={() => {
+            window.getSelection()?.removeAllRanges();
+            setSelection(null);
+          }}
+        />
+      )}
+      {!selection && activeAnn && activeAnn.kind !== "bookmark" && mode === "reflow" && !panel && !lookup && !editing && (
+        <ActionBar
+          color={activeAnn.color}
+          onColor={(c) => void saveAnnotation({ ...activeAnn, color: c })}
+          onNote={() => {
+            setEditing(activeAnn);
+            setActiveId(null);
+          }}
+          onLookup={() => {
+            lookupOf(activeAnn.text, activeAnn.blockIndex, activeAnn.start, activeAnn.end);
+            setActiveId(null);
+          }}
+          onRemove={() => {
+            void removeAnnotation(activeAnn.id);
+            setActiveId(null);
+          }}
+          onClose={() => setActiveId(null)}
+        />
       )}
 
       {panel === "settings" && <SettingsPanel hasBookOverride={hasBookOverride} onClose={() => setPanel(null)} />}

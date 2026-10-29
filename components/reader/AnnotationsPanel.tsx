@@ -13,13 +13,22 @@ export const COLORS: { id: HighlightColor; hex: string }[] = [
   { id: "pink", hex: "#f687b3" },
 ];
 
-export function ColorDots({ value, onPick }: { value?: HighlightColor; onPick: (c: HighlightColor) => void }) {
+export function ColorDots({
+  value,
+  verb = t.tips.color,
+  onPick,
+}: {
+  value?: HighlightColor;
+  verb?: string;
+  onPick: (c: HighlightColor) => void;
+}) {
   return (
     <div className="flex gap-1">
       {COLORS.map((c) => (
         <button
           key={c.id}
-          aria-label={t.colors[c.id]}
+          aria-label={`${verb} ${t.colors[c.id].toLowerCase()}`}
+          title={`${verb} ${t.colors[c.id].toLowerCase()}`}
           className="btn-icon"
           onClick={() => onPick(c.id)}
         >
