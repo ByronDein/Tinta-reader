@@ -1,0 +1,25 @@
+# dependencias y build
+node_modules
+.next
+out
+*.tsbuildinfo
+next-env.d.ts
+
+# recursos de pdf.js (se copian en postinstall)
+public/pdf.worker.min.mjs
+public/pdfjs
+
+# archivos locales
+books
+.env*
+.vercel
+.DS_Store
+Thumbs.db
+npm-debug.log*
+
+# herramientas de IA / editor
+.claude
+CLAUDE.md
+.cursor
+.vscode
+.idea
